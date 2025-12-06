@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Ace Grader Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+              serif: ['Cormorant Garamond', 'serif'],
+              hand: ['"Kalam"', 'cursive'], // Teacher handwriting font
+            },
+            colors: {
+              brand: {
+                50: '#f0f9ff',
+                100: '#e0f2fe',
+                200: '#bae6fd',
+                300: '#7dd3fc',
+                400: '#38bdf8',
+                500: '#0ea5e9',
+                600: '#0284c7',
+                900: '#0c4a6e',
+                950: '#082f49',
+              },
+              paper: {
+                50: '#FDFBF7', // Cream paper
+                100: '#F5F2EB',
+                200: '#E6E2D6',
+              }
+            },
+            animation: {
+              'fade-in': 'fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+              'slide-up': 'slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+              'pulse-slow': 'pulse 6s ease-in-out infinite',
+              'aurora': 'aurora 20s linear infinite',
+              'stamp': 'stamp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards', // Stamp animation
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              slideUp: {
+                '0%': { opacity: '0', transform: 'translateY(20px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+              aurora: {
+                '0%': { transform: 'translate(0, 0) rotate(0deg)' },
+                '50%': { transform: 'translate(20px, -20px) rotate(5deg)' },
+                '100%': { transform: 'translate(0, 0) rotate(0deg)' },
+              },
+              stamp: {
+                '0%': { opacity: '0', transform: 'scale(3) rotate(-15deg)' },
+                '100%': { opacity: '0.9', transform: 'scale(1) rotate(-15deg)' },
+              }
+            }
+          },
+        },
+      }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Kalam:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <style>
+      body {
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        /* Default to dark mode colors, overridden by class */
+        background-color: #FDFBF7; 
+        color: #1e293b;
+        overflow-x: hidden;
+        transition: background-color 0.5s ease, color 0.5s ease;
+      }
+      
+      .dark body {
+        background-color: #020408;
+        color: #e2e8f0;
+      }
+      
+      /* Film Grain Texture */
+      .noise-bg {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 0;
+        opacity: 0.035;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+      }
+
+      /* Ambient Aurora Blobs */
+      .aurora-blob {
+        position: fixed;
+        border-radius: 50%;
+        filter: blur(80px);
+        opacity: 0.3;
+        z-index: -1;
+        animation: aurora 20s infinite alternate;
+      }
+      
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar {
+        width: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #cbd5e1; /* Light mode scrollbar */
+        border-radius: 10px;
+      }
+      .dark ::-webkit-scrollbar-thumb {
+        background: #1e293b; /* Dark mode scrollbar */
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+      }
+      .dark ::-webkit-scrollbar-thumb:hover {
+         background: #334155;
+      }
+      
+      /* Mobile text sizing fix */
+      .text-balance {
+        text-wrap: balance;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
+    "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/"
+  }
+}
+</script>
+</head>
+  <body class="bg-paper-50 text-slate-900 dark:bg-[#020408] dark:text-slate-200 transition-colors duration-500">
+    <div class="noise-bg"></div>
+    <!-- Global Gradient for that 'dimmer' Landing feel -->
+    <div class="fixed inset-0 pointer-events-none z-[-2] bg-gradient-to-br from-white via-paper-50 to-slate-100 dark:from-[#020408] dark:via-[#050810] dark:to-[#020408] transition-colors duration-500"></div>
+    
+    <div class="aurora-blob bg-indigo-200/40 dark:bg-indigo-900/20 w-96 h-96 top-0 left-0"></div>
+    <div class="aurora-blob bg-blue-100/40 dark:bg-blue-900/10 w-80 h-80 bottom-0 right-0" style="animation-delay: -5s"></div>
+    <div id="root"></div>
+  </body>
+</html>
