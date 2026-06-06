@@ -370,6 +370,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                 onClick={async () => {
                   const clipText = await navigator.clipboard.readText();
                   setText(clipText);
+                //   alert("Content pasted from clipboard"); // Removed annoying alert for paste
                 }}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 border border-slate-200 dark:border-white/5 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-300 transition-colors shadow-sm"
                 title="Paste from Clipboard"

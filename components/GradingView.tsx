@@ -1,188 +1,221 @@
+
 import React, { useState } from 'react';
-import { GradingResult } from '../types';
+import { GradingResult, TeacherCorrection } from '../types';
 import { Button } from './Button';
-import { RefreshCw, Download, Award, BrainCircuit, FileSignature } from 'lucide-react';
+import { RefreshCw, Download, Award, BrainCircuit, FileSignature, Edit3, Check, X, ArrowRight, Quote } from 'lucide-react';
 import { ThinkingPanel } from './ThinkingPanel';
 import { MarkedDocument } from './MarkedDocument';
+import { saveCorrection } from '../services/firebaseService';
+import { auth } from '../firebase';
 
 interface GradingViewProps {
   result: GradingResult;
   onReset: () => void;
+  rubricId?: string;
+  submissionId?: string;
 }
 
-export const GradingView: React.FC<GradingViewProps> = ({ result, onReset }) => {
+export const GradingView: React.FC<GradingViewProps> = ({ result, onReset, rubricId, submissionId }) => {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [showMarkedDoc, setShowMarkedDoc] = useState(false);
-  const scorePercentage = Math.round((result.totalScore / result.maxTotalScore) * 100);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedResult, setEditedResult] = useState<GradingResult>(JSON.parse(JSON.stringify(result)));
+  const [isSaving, setIsSaving] = useState(false);
+
+  const scorePercentage = Math.round((editedResult.totalScore / editedResult.maxTotalScore) * 100);
   
-  const getGradeColor = (p: number) => {
-    if (p >= 85) return 'text-emerald-600 dark:text-emerald-400';
-    if (p >= 70) return 'text-brand-600 dark:text-brand-400';
-    if (p >= 50) return 'text-orange-600 dark:text-orange-400';
-    return 'text-rose-600 dark:text-rose-400';
+  const handleScoreChange = (idx: number, newVal: string) => {
+    const val = parseInt(newVal) || 0;
+    const newBreakdown = [...editedResult.breakdown];
+    newBreakdown[idx].pointsEarned = Math.min(val, newBreakdown[idx].maxPoints);
+    const newTotal = newBreakdown.reduce((acc, curr) => acc + curr.pointsEarned, 0);
+    setEditedResult({ ...editedResult, breakdown: newBreakdown, totalScore: newTotal });
   };
 
-  if (showMarkedDoc) {
-      return <MarkedDocument result={result} onClose={() => setShowMarkedDoc(false)} />;
-  }
+  const handleSaveCorrection = async () => {
+    if (!rubricId || !submissionId || !auth.currentUser) return;
+    setIsSaving(true);
+    try {
+      const correction: TeacherCorrection = {
+        originalScore: result.totalScore,
+        correctedScore: editedResult.totalScore,
+        originalFeedback: result.feedback,
+        correctedFeedback: editedResult.feedback,
+        reasonForCorrection: "Instructor manual refinement",
+        timestamp: Date.now()
+      };
+      await saveCorrection(auth.currentUser.uid, rubricId, submissionId, correction, { ...editedResult, isEditedByTeacher: true });
+      setIsEditing(false);
+    } catch (e) {
+      alert("Archive error.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (showMarkedDoc) return <MarkedDocument result={editedResult} onClose={() => setShowMarkedDoc(false)} />;
 
   return (
-    <div className="w-full pb-32 md:pb-20 animate-fade-in relative pt-4">
+    <div className="max-w-5xl mx-auto w-full pb-32 animate-fade-in relative pt-12">
       
-      {/* Insight Trigger */}
+      {/* Logic Drawer Toggle */}
       <button 
         onClick={() => setIsPanelOpen(true)}
-        className="fixed right-0 top-1/2 -translate-y-1/2 z-40 flex items-center gap-2 pl-4 pr-3 py-3 bg-white/90 dark:bg-indigo-950/80 backdrop-blur-xl border-l border-t border-b border-brand-500/30 rounded-l-xl shadow-lg hover:pr-5 transition-all group"
+        className="fixed right-0 top-1/2 -translate-y-1/2 z-40 bg-slate-900 dark:bg-white text-white dark:text-slate-950 p-4 rounded-l-2xl shadow-2xl hover:translate-x-[-4px] transition-transform flex flex-col items-center gap-2 group"
       >
-        <BrainCircuit size={20} className="text-brand-600 dark:text-brand-400 group-hover:text-brand-500 dark:group-hover:text-brand-300" />
-        <span className="text-xs font-bold text-slate-800 dark:text-white uppercase vertical-lr hidden md:block">AI Logic</span>
+        <BrainCircuit size={18} />
+        <span className="text-[8px] font-bold uppercase tracking-[0.2em] [writing-mode:vertical-lr]">Logic</span>
       </button>
 
-      <ThinkingPanel 
-        isOpen={isPanelOpen} 
-        onClose={() => setIsPanelOpen(false)} 
-        result={result} 
-      />
+      <ThinkingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} result={editedResult} />
       
-      {/* Header - Compact */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-             <div className="inline-flex items-center justify-center p-2 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
-                <Award size={20} />
+      {/* Header Area */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-8 mb-16 px-4">
+        <div className="space-y-4">
+             <div className="flex items-center gap-3">
+                <div className="p-3 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl">
+                  <Award size={24} className="text-slate-900 dark:text-white" />
+                </div>
+                <h1 className="text-5xl font-serif italic text-slate-900 dark:text-white">Assessment Report</h1>
              </div>
-             <div>
-                <h2 className="text-xl md:text-2xl font-bold text-slate-900 dark:text-white">Evaluation Report</h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">{result.studentName} • {result.className || 'No Class'}</p>
-             </div>
+             <p className="text-slate-400 font-light text-xl uppercase tracking-widest flex items-center gap-3">
+                {editedResult.studentName} <span className="w-1 h-1 bg-slate-200 rounded-full"></span> {editedResult.className || 'Academic Period'}
+             </p>
         </div>
-        <div className="hidden md:block">
-            <span className="text-xs font-bold uppercase tracking-widest text-slate-500 border border-slate-200 dark:border-white/10 px-3 py-1 rounded-full">
-                {new Date().toLocaleDateString()}
-            </span>
+        
+        <div className="flex gap-4">
+            {!isEditing ? (
+              <Button variant="outline" onClick={() => setIsEditing(true)} className="rounded-full px-8 border-slate-200 dark:border-white/10">
+                 <Edit3 size={14} className="mr-2" /> Refine Assessment
+              </Button>
+            ) : (
+              <div className="flex gap-2">
+                <Button variant="ghost" onClick={() => { setIsEditing(false); setEditedResult(JSON.parse(JSON.stringify(result))); }}>
+                   Cancel
+                </Button>
+                <Button onClick={handleSaveCorrection} isLoading={isSaving} className="bg-emerald-600 hover:bg-emerald-700 border-none shadow-xl">
+                   <Check size={14} className="mr-2" /> Commit Changes
+                </Button>
+              </div>
+            )}
         </div>
       </div>
 
-      {/* Main Card */}
-      <div className="relative bg-white dark:bg-[#0C101A] rounded-2xl border border-slate-200 dark:border-indigo-500/10 overflow-hidden shadow-xl shadow-slate-200/50 dark:shadow-none">
-            {/* Top Bar */}
-            <div className="h-1 w-full bg-gradient-to-r from-brand-600 via-brand-400 to-indigo-600"></div>
+      <div className="bg-white dark:bg-[#080808] border border-slate-100 dark:border-white/5 rounded-[40px] overflow-hidden shadow-2xl">
+            <div className="h-2 w-full bg-slate-900 dark:bg-white"></div>
             
-            <div className="p-5 md:p-8">
+            <div className="p-10 md:p-16">
                 
-                {/* 
-                   COMPACT GRID LAYOUT
-                */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 mb-8 pb-8 border-b border-slate-100 dark:border-indigo-500/10">
-                    
-                    {/* LEFT: Score & Grade (Compact 3 cols) */}
-                    <div className="lg:col-span-4 flex flex-col justify-center gap-4">
-                         <div className="bg-slate-50 dark:bg-white/5 p-4 rounded-xl border border-slate-200 dark:border-white/5 flex items-center justify-between gap-4">
-                             <div>
-                                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Total Score</div>
-                                <div className="flex items-baseline gap-1">
-                                     <span className="text-4xl font-bold text-slate-900 dark:text-white">{result.totalScore}</span>
-                                     <span className="text-lg text-slate-500 dark:text-slate-600 font-light">/{result.maxTotalScore}</span>
-                                </div>
-                             </div>
-                             
-                             {/* Mini Ring */}
-                             <div className="relative h-12 w-12 shrink-0">
-                                <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
-                                  <circle className="text-slate-200 dark:text-slate-700" strokeWidth="12" stroke="currentColor" fill="transparent" r="42" cx="50" cy="50" />
-                                  <circle 
-                                     className={`${getGradeColor(scorePercentage)}`} 
-                                     strokeWidth="12" 
-                                     strokeDasharray={264} 
-                                     strokeDashoffset={264 - (264 * scorePercentage) / 100}
-                                     strokeLinecap="round" 
-                                     stroke="currentColor" 
-                                     fill="transparent" 
-                                     r="42" cx="50" cy="50" 
-                                  />
-                                </svg>
-                                <div className="absolute inset-0 flex items-center justify-center">
-                                    <span className={`text-[10px] font-bold ${getGradeColor(scorePercentage)}`}>{scorePercentage}%</span>
-                                </div>
-                             </div>
+                {/* Score Summary Section */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 mb-20">
+                    <div className="lg:col-span-5 space-y-8 flex flex-col justify-center border-r border-slate-50 dark:border-white/[0.03] pr-12">
+                         <div className="space-y-1">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.3em]">Evaluation Outcome</span>
+                            <div className="flex items-baseline gap-4">
+                               <span className="text-8xl md:text-9xl font-serif italic text-slate-900 dark:text-white leading-none">{editedResult.totalScore}</span>
+                               <span className="text-3xl font-light text-slate-300">/ {editedResult.maxTotalScore}</span>
+                            </div>
                          </div>
-                         
-                         {/* Pass/Fail or Grade Badge */}
-                         <div className={`px-4 py-3 rounded-xl border text-center ${
-                             scorePercentage >= 50 
-                             ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400' 
-                             : 'bg-rose-50 dark:bg-rose-500/10 border-rose-200 dark:border-rose-500/20 text-rose-700 dark:text-rose-400'
-                         }`}>
-                             <span className="font-bold uppercase tracking-wider text-sm">
-                                {scorePercentage >= 90 ? 'Excellent' : scorePercentage >= 75 ? 'Good' : scorePercentage >= 50 ? 'Pass' : 'Needs Improvement'}
-                             </span>
+                         <div className="flex items-center gap-4">
+                            <div className="h-px flex-1 bg-slate-100 dark:bg-white/5"></div>
+                            <span className="text-sm font-bold uppercase tracking-widest text-slate-400">{scorePercentage}% Proficiency</span>
+                            <div className="h-px flex-1 bg-slate-100 dark:bg-white/5"></div>
                          </div>
                     </div>
 
-                    {/* RIGHT: Executive Summary (Compact 9 cols) */}
-                    <div className="lg:col-span-8 bg-brand-50/30 dark:bg-white/[0.02] p-5 rounded-xl border border-brand-100 dark:border-indigo-500/10 flex flex-col justify-center">
-                      <h3 className="text-xs font-bold text-brand-600 dark:text-brand-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-                        <FileSignature size={14} />
-                        Executive Summary
-                      </h3>
-                      <p className="text-slate-700 dark:text-slate-300 leading-relaxed text-sm md:text-base">
-                        {result.summary}
-                      </p>
+                    <div className="lg:col-span-7 flex flex-col justify-center space-y-6">
+                      <div className="flex items-center gap-2 text-slate-400">
+                        <Quote size={24} className="opacity-20" />
+                        <span className="text-[10px] font-bold uppercase tracking-[0.3em]">Synthesized Summary</span>
+                      </div>
+                      {isEditing ? (
+                        <textarea 
+                          value={editedResult.summary}
+                          onChange={(e) => setEditedResult({...editedResult, summary: e.target.value})}
+                          className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl p-6 text-slate-900 dark:text-white font-serif text-lg leading-relaxed focus:outline-none focus:border-slate-900 dark:focus:border-white transition-colors"
+                        />
+                      ) : (
+                        <p className="text-slate-700 dark:text-slate-300 font-serif italic text-2xl leading-relaxed">
+                          {editedResult.summary}
+                        </p>
+                      )}
                     </div>
                 </div>
 
-                {/* Breakdown Grid */}
-                <div className="space-y-4">
-                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Criterion Breakdown</h3>
-                    <div className="grid gap-3">
-                        {result.breakdown.map((item, idx) => (
-                            <div key={idx} className="bg-white dark:bg-[#050810] p-4 rounded-lg border border-slate-200 dark:border-indigo-500/10 shadow-sm dark:shadow-none hover:border-brand-300 dark:hover:border-indigo-500/30 transition-colors">
-                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2 gap-2">
-                                    <h4 className="font-semibold text-slate-800 dark:text-slate-200 text-sm md:text-base">{item.name}</h4>
-                                    <div className="px-2 py-0.5 rounded bg-slate-100 dark:bg-white/5 text-xs font-mono text-brand-700 dark:text-brand-200 border border-slate-200 dark:border-transparent whitespace-nowrap">
-                                        {item.pointsEarned} / {item.maxPoints} pts
-                                    </div>
+                {/* Criteria Detail */}
+                <div className="space-y-12">
+                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.4em] text-center mb-8">Technical Breakdown</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {editedResult.breakdown.map((item, idx) => (
+                            <div key={idx} className="p-8 bg-slate-50/50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 rounded-3xl space-y-4 hover:bg-white dark:hover:bg-white/[0.04] transition-all group">
+                                <div className="flex justify-between items-start">
+                                    <h4 className="font-serif italic text-xl text-slate-900 dark:text-white">{item.name}</h4>
+                                    {isEditing ? (
+                                      <div className="flex items-center gap-2">
+                                        <input 
+                                          type="number" 
+                                          value={item.pointsEarned} 
+                                          onChange={(e) => handleScoreChange(idx, e.target.value)}
+                                          className="w-12 bg-white dark:bg-black/40 border border-slate-200 dark:border-white/10 rounded text-center text-sm font-bold"
+                                        />
+                                        <span className="text-[10px] text-slate-400 font-bold">/ {item.maxPoints}</span>
+                                      </div>
+                                    ) : (
+                                      <div className="text-2xl font-serif text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">
+                                        {item.pointsEarned}<span className="text-xs">/{item.maxPoints}</span>
+                                      </div>
+                                    )}
                                 </div>
-                                <p className="text-slate-600 dark:text-slate-400 text-xs md:text-sm leading-relaxed border-l-2 border-brand-200 dark:border-brand-500/30 pl-3">
-                                    {item.justification}
-                                </p>
+                                <div className="h-px w-8 bg-slate-200 dark:bg-white/10"></div>
+                                {isEditing ? (
+                                  <textarea 
+                                    value={item.justification}
+                                    onChange={(e) => {
+                                      const newB = [...editedResult.breakdown];
+                                      newB[idx].justification = e.target.value;
+                                      setEditedResult({...editedResult, breakdown: newB});
+                                    }}
+                                    className="w-full bg-white dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl p-3 text-xs text-slate-600 focus:outline-none"
+                                  />
+                                ) : (
+                                  <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed font-light">
+                                      {item.justification}
+                                  </p>
+                                )}
                             </div>
                         ))}
                     </div>
                 </div>
 
-                {/* Feedback */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-8">
-                    <div>
-                        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-3">Feedback for Student</h3>
-                        <div className="p-5 bg-brand-50 dark:bg-brand-900/10 rounded-xl border border-brand-200 dark:border-brand-500/10 text-brand-900 dark:text-brand-100/80 leading-relaxed text-sm">
-                            {result.feedback}
-                        </div>
-                    </div>
-                    {result.teacherNotes && (
-                        <div>
-                            <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-3">Examiner Notes</h3>
-                            <div className="p-5 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-200 dark:border-amber-500/10 text-amber-900 dark:text-amber-200/70 leading-relaxed text-sm italic">
-                                {result.teacherNotes}
-                            </div>
-                        </div>
+                {/* Final Feedback */}
+                <div className="mt-20 pt-20 border-t border-slate-100 dark:border-white/5">
+                    <h3 className="text-[10px] font-bold uppercase tracking-[0.4em] text-slate-400 mb-8">Pedagogical Guidance</h3>
+                    {isEditing ? (
+                      <textarea 
+                        value={editedResult.feedback}
+                        onChange={(e) => setEditedResult({...editedResult, feedback: e.target.value})}
+                        className="w-full bg-slate-900 text-white dark:bg-white dark:text-slate-950 p-10 rounded-[32px] text-xl font-serif leading-relaxed italic"
+                      />
+                    ) : (
+                      <div className="p-12 md:p-16 bg-slate-900 text-white dark:bg-white dark:text-slate-950 rounded-[40px] text-2xl md:text-3xl font-serif italic leading-relaxed shadow-2xl relative">
+                          <Quote className="absolute top-8 left-8 opacity-20" size={40} />
+                          {editedResult.feedback}
+                      </div>
                     )}
                 </div>
             </div>
       </div>
 
-      <div className="flex flex-col md:flex-row justify-center gap-4 mt-8 pb-4">
-        <Button variant="secondary" onClick={onReset} className="w-full md:w-auto h-10 text-sm">
-          <RefreshCw size={14} />
-          Grade Another
-        </Button>
-        <Button onClick={() => setShowMarkedDoc(true)} className="w-full md:w-auto bg-rose-600 hover:bg-rose-500 border-rose-500 text-white shadow-[0_0_20px_rgba(225,29,72,0.4)] h-10 text-sm">
-           <FileSignature size={14} />
-           View Marked Paper
-        </Button>
-        <Button variant="primary" onClick={() => window.print()} className="w-full md:w-auto h-10 text-sm">
-          <Download size={14} />
-          Print Report
-        </Button>
+      <div className="flex flex-col md:flex-row justify-center gap-6 mt-16 px-4">
+        <button onClick={onReset} className="px-10 py-5 bg-white dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/10 rounded-2xl text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-slate-900 dark:hover:text-white hover:shadow-xl transition-all flex items-center justify-center gap-3">
+          <RefreshCw size={16} /> Mark Next Paper
+        </button>
+        <button onClick={() => setShowMarkedDoc(true)} className="px-12 py-5 bg-slate-900 dark:bg-white text-white dark:text-slate-950 rounded-2xl text-xs font-bold uppercase tracking-widest hover:scale-105 transition-all shadow-2xl flex items-center justify-center gap-3">
+           <FileSignature size={18} /> View Marked Document
+        </button>
+        <button onClick={() => window.print()} className="px-10 py-5 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl text-xs font-bold uppercase tracking-widest text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all flex items-center justify-center gap-3">
+          <Download size={16} /> Export Dossier
+        </button>
       </div>
     </div>
   );

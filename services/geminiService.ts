@@ -1,42 +1,50 @@
+
 import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { Rubric, GradingResult, SubmissionInput } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-// Prompt to parse raw text/file into a structured rubric
+const extractJSON = (text: string | undefined): any => {
+  if (!text) throw new Error("The AI provided an empty response. Please try again.");
+  try {
+    const startIndex = text.indexOf('{');
+    const endIndex = text.lastIndexOf('}');
+    if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
+        const jsonStr = text.substring(startIndex, endIndex + 1);
+        return JSON.parse(jsonStr);
+    }
+    const cleaned = text.replace(/```json\s*|\s*```/g, "").trim();
+    return JSON.parse(cleaned);
+  } catch (e) {
+    console.error("JSON Parsing failed. Raw text:", text);
+    throw new Error("I couldn't structure the evaluation correctly. Please simplify the submission or try again.");
+  }
+};
+
 export const parseRubric = async (input: SubmissionInput): Promise<Rubric> => {
-  const model = "gemini-2.5-flash";
-  
+  const model = "gemini-3-flash-preview";
   const parts: any[] = [];
   
-  parts.push({ text: `Extract grading criteria from the following rubric document/text. 
-    Ensure you capture the maximum points for each criterion.
-    
-    IMPORTANT: Also extract 'keyPointers' - a list of 3-5 critical things the teacher is looking for in this specific assignment (e.g. "Strong Thesis Statement", "Use of Primary Sources", etc).` });
+  parts.push({ text: `Extract grading criteria from the provided content. Identify maximum points. Provide a clear title and description. Extract 'keyPointers' - 3 to 5 critical requirements for success.` });
 
-  // Handle Multimodal Input (PDFs, Images) vs Text
   if (input.type === 'file' && input.mimeType) {
     parts.push({ inlineData: { mimeType: input.mimeType, data: input.content } });
   } else {
-    parts.push({ text: `Rubric Content:\n${input.content}` });
+    parts.push({ text: `Rubric Content to analyze:\n${input.content}` });
   }
 
   const response = await ai.models.generateContent({
     model,
     contents: { parts },
     config: {
-      systemInstruction: "You are Ace Grader's Rubric Parser. Your job is to extract structured grading data with surgical precision from the provided document or text.",
+      systemInstruction: "You are a professional academic consultant. Your goal is to convert any text or document containing grading criteria into a clean, valid JSON structure. Be precise with point values.",
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          title: { type: Type.STRING, description: "A concise title for the assignment/rubric" },
-          description: { type: Type.STRING, description: "A one sentence summary of the rubric's purpose" },
-          keyPointers: {
-            type: Type.ARRAY,
-            description: "3 to 5 short bullet points summarizing the most important requirements.",
-            items: { type: Type.STRING }
-          },
+          title: { type: Type.STRING },
+          description: { type: Type.STRING },
+          keyPointers: { type: Type.ARRAY, items: { type: Type.STRING } },
           criteria: {
             type: Type.ARRAY,
             items: {
@@ -44,7 +52,7 @@ export const parseRubric = async (input: SubmissionInput): Promise<Rubric> => {
               properties: {
                 name: { type: Type.STRING },
                 maxPoints: { type: Type.NUMBER },
-                description: { type: Type.STRING, description: "Description of the criteria requirements" }
+                description: { type: Type.STRING }
               },
               required: ["name", "maxPoints", "description"]
             }
@@ -55,96 +63,59 @@ export const parseRubric = async (input: SubmissionInput): Promise<Rubric> => {
     }
   });
 
-  const jsonText = response.text;
-  if (!jsonText) throw new Error("Failed to generate rubric structure");
-  
-  return JSON.parse(jsonText) as Rubric;
+  return extractJSON(response.text) as Rubric;
 };
 
-// Prompt to grade student work based on the confirmed rubric
 export const gradeStudentWork = async (
   rubric: Rubric, 
   submission: SubmissionInput,
-  questionPaper?: SubmissionInput
+  questionPaper?: SubmissionInput,
+  pastCorrections?: any[]
 ): Promise<GradingResult> => {
-  const model = "gemini-2.5-flash"; // Multimodal capable
-
-  const rubricContext = JSON.stringify(rubric);
-  
-  // Construct a multimodal payload
+  const model = "gemini-3-pro-preview";
   const parts: any[] = [];
 
-  // 1. Add Rubric
-  parts.push({ text: `RUBRIC CONFIGURATION:\n${rubricContext}` });
+  parts.push({ text: `EVALUATION PROTOCOL:
+  1. RUBRIC: ${JSON.stringify(rubric)}
+  2. CONTEXT: ${questionPaper ? 'Question Paper provided below.' : 'No context provided.'}
+  3. MISSION: You are a Precision Marking Engine. Your goal is to provide a COMPLETE and EXHAUSTIVE marked document.
+  4. ANNOTATIONS: You must find at least 5-10 specific points in the text to annotate (praise, errors, or suggestions).
+  5. TRANSCRIPTION: Provide the FULL transcribed text of the student's work.` });
 
-  // 2. Add Question Paper / Context (If provided)
+  if (pastCorrections && pastCorrections.length > 0) {
+    parts.push({ text: `LEARNING FROM TEACHER PREFERENCES: ${JSON.stringify(pastCorrections)}` });
+  }
+
   if (questionPaper) {
      if (questionPaper.type === 'file' && questionPaper.mimeType) {
-         parts.push({ text: "REFERENCE MATERIAL / QUESTION PAPER (For Context):" });
          parts.push({ inlineData: { mimeType: questionPaper.mimeType, data: questionPaper.content } });
      } else {
-         parts.push({ text: `REFERENCE MATERIAL / QUESTION PAPER (For Context):\n${questionPaper.content}` });
+         parts.push({ text: `ASSIGNMENT PROMPT: ${questionPaper.content}` });
      }
   }
 
-  // 3. Add Student Submission
-  const studentIdentifier = submission.studentName ? `(Student Name Provided: ${submission.studentName})` : "(Student Name Unknown - PLEASE EXTRACT FROM DOCUMENT)";
-  
+  parts.push({ text: "STUDENT SUBMISSION:" });
   if (submission.type === 'file' && submission.mimeType) {
-    parts.push({ text: `STUDENT SUBMISSION ${studentIdentifier}:` });
     parts.push({ inlineData: { mimeType: submission.mimeType, data: submission.content } });
   } else {
-    parts.push({ text: `STUDENT SUBMISSION ${studentIdentifier}:\n${submission.content}` });
+    parts.push({ text: submission.content });
   }
-
-  // 4. Instructions
-  parts.push({ text: `
-    Evaluate the student submission above strictly based on the provided RUBRIC.
-    ${questionPaper ? "Use the REFERENCE MATERIAL to understand the specific questions and requirements of the assignment." : ""}
-    
-    CRITICAL INSTRUCTION FOR META-DATA:
-    - Look for the Student's Name and Class/Section at the top of the document. 
-    - If found, extract them into the 'studentName' and 'className' fields.
-    
-    RED PEN ANNOTATIONS:
-    - Identify specific errors, grammar mistakes, logic gaps, or brilliant points in the text.
-    - Quote the exact text in 'originalText'.
-    - Provide a short 'correction' or 'comment'.
-  `});
 
   try {
     const response = await ai.models.generateContent({
         model,
         contents: { parts },
         config: {
-        // PERMISSIVE SAFETY SETTINGS to allow "Harsh" grading language
-        safetySettings: [
-            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-        ],
-        systemInstruction: `You are Ace Grader's most HARSH, STRICT, and UNCOMPROMISING Academic Examiner.
+        maxOutputTokens: 8192,
+        thinkingConfig: { thinkingBudget: 4000 },
+        systemInstruction: `You are Ace Grader: The analytic and precise academic evaluator.
         
-        GRADING PHILOSOPHY (STRICT):
-        1. NO GRADE INFLATION: 100% is for perfection only (publishable quality). 50% is average. 
-        2. ZERO TOLERANCE: Penalize vagueness, logic gaps, bad grammar, and weak formatting aggressively.
-        3. BE DIRECT: Do not sugarcoat feedback. Point out exactly where they failed.
-        4. EVIDENCE REQUIRED: If the student claims something without proof, mark it down.
-        
-        MANDATORY TRANSCRIPTION:
-        - You MUST transcribe the full text of the student's submission into the 'fullTranscribedText' field. 
-        - If it is an image or PDF, OCR it exactly. If it is text, copy it.
-        
-        You must provide:
-        1. 'fullTranscribedText': The raw text content of the submission.
-        2. A precise breakdown of points (be stingy with points).
-        3. 'thinkingProcess': A LIST of strings. Each string is a distinct logical step or observation.
-           - Example: ["Thesis is weak.", "Arguments lack citations.", "Conclusion is abrupt."]
-        4. An 'improvementTips' list (stern advice).
-        5. 'annotations': Specific errors mapped to the text.
-
-        Calculated 'totalScore' must equal the sum of 'pointsEarned'.`,
+        CRITICAL OUTPUT REQUIREMENTS:
+        - 'fullTranscribedText': Must be the COMPLETE student essay/response. Do not truncate.
+        - 'annotations': Provide exhaustive margin notes. Every major claim or error should be tagged.
+        - Tone: Professional, analytic, but fair.
+        - Format: JSON strictly adhering to the schema.
+        `,
         responseMimeType: "application/json",
         responseSchema: {
             type: Type.OBJECT,
@@ -152,79 +123,49 @@ export const gradeStudentWork = async (
             studentName: { type: Type.STRING },
             className: { type: Type.STRING },
             summary: { type: Type.STRING },
-            fullTranscribedText: { type: Type.STRING, description: "The exact extracted text from the student submission (OCR if image)." },
-            thinkingProcess: { 
-                type: Type.ARRAY, 
-                items: { type: Type.STRING },
-                description: "List of logical steps taken to determine the grade." 
-            },
-            improvementTips: { 
-                type: Type.ARRAY, 
-                items: { type: Type.STRING }
-            },
+            fullTranscribedText: { type: Type.STRING },
+            thinkingProcess: { type: Type.ARRAY, items: { type: Type.STRING } },
+            improvementTips: { type: Type.ARRAY, items: { type: Type.STRING } },
             annotations: {
                 type: Type.ARRAY,
                 items: {
                     type: Type.OBJECT,
                     properties: {
-                    originalText: { type: Type.STRING, description: "The exact short phrase or sentence from the student's work." },
-                    correction: { type: Type.STRING, description: "The corrected version or short note." },
-                    type: { type: Type.STRING, enum: ['error', 'warning', 'praise', 'grammar'] },
-                    comment: { type: Type.STRING, description: "A brief explanation of why this is marked." }
+                        originalText: { type: Type.STRING },
+                        correction: { type: Type.STRING },
+                        type: { type: Type.STRING, enum: ['error', 'warning', 'praise', 'grammar'] },
+                        comment: { type: Type.STRING }
                     }
                 }
             },
             breakdown: {
                 type: Type.ARRAY,
                 items: {
-                type: Type.OBJECT,
-                properties: {
-                    name: { type: Type.STRING },
-                    pointsEarned: { type: Type.NUMBER },
-                    maxPoints: { type: Type.NUMBER },
-                    justification: { type: Type.STRING }
-                },
-                required: ["name", "pointsEarned", "maxPoints", "justification"]
+                    type: Type.OBJECT,
+                    properties: {
+                        name: { type: Type.STRING },
+                        pointsEarned: { type: Type.NUMBER },
+                        maxPoints: { type: Type.NUMBER },
+                        justification: { type: Type.STRING }
+                    },
+                    required: ["name", "pointsEarned", "maxPoints", "justification"]
                 }
             },
             totalScore: { type: Type.NUMBER },
             maxTotalScore: { type: Type.NUMBER },
-            feedback: { type: Type.STRING },
-            teacherNotes: { type: Type.STRING }
+            feedback: { type: Type.STRING }
             },
-            required: ["summary", "fullTranscribedText", "thinkingProcess", "improvementTips", "breakdown", "totalScore", "maxTotalScore", "feedback"]
+            required: ["summary", "fullTranscribedText", "annotations", "breakdown", "totalScore", "maxTotalScore", "feedback"]
         }
         }
     });
 
-    const jsonText = response.text;
-    if (!jsonText) throw new Error("Failed to generate grading result");
-    
-    const result = JSON.parse(jsonText) as GradingResult;
-    
-    // Merge AI extracted data with Manual Override if AI failed or Manual was provided
-    if (submission.studentName && (!result.studentName || result.studentName === 'Unknown Student')) {
-        result.studentName = submission.studentName;
-    }
-    if (!result.studentName) result.studentName = "Unknown Student";
-    
-    if (submission.className && (!result.className || result.className === '')) {
-        result.className = submission.className;
-    }
-
-    // Preserve content for display
-    if (submission.type === 'text') {
-        result.originalContent = submission.content;
-        result.originalType = 'text';
-    } else {
-        // Pass the base64 content back just in case, but prefer fullTranscribedText for display
-        result.originalContent = submission.content; 
-        result.originalType = 'file';
-    }
-
+    const result = extractJSON(response.text) as GradingResult;
+    result.originalContent = submission.content;
+    result.originalType = submission.type;
     return result;
-  } catch (error) {
-    console.error("Gemini Grading Error:", error);
-    throw new Error("Grading failed. Please ensure your image is under 20MB and legible.");
+  } catch (error: any) {
+    console.error("Critical error in gradeStudentWork:", error);
+    throw new Error(error.message || "I encountered an issue while communicating with the grading engine.");
   }
 };

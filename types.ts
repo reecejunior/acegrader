@@ -5,15 +5,25 @@ export interface RubricCriterion {
   description: string;
 }
 
+export interface TeacherCorrection {
+  originalScore: number;
+  correctedScore: number;
+  originalFeedback: string;
+  correctedFeedback: string;
+  reasonForCorrection: string;
+  timestamp: number;
+}
+
 export interface Rubric {
-  id?: string; // Firestore ID
-  ownerId?: string; // User ID
-  subject?: string; // e.g., "History", "English"
+  id?: string;
+  ownerId?: string;
+  subject?: string;
   createdAt?: number;
   title: string;
   description: string;
   criteria: RubricCriterion[];
-  keyPointers?: string[]; // Added: AI extracted key focus areas
+  keyPointers?: string[];
+  pastCorrections?: TeacherCorrection[]; // Used for few-shot learning
 }
 
 export interface GradeCriterionResult {
@@ -32,21 +42,22 @@ export interface Annotation {
 
 export interface GradingResult {
   studentName: string; 
-  className?: string; // Added
+  className?: string;
   submissionId?: string; 
   timestamp?: number; 
   summary: string;
-  thinkingProcess: string[]; // Changed from string to string[] for bullet points
+  thinkingProcess: string[];
   improvementTips: string[];
-  annotations?: Annotation[]; // Added for Red Pen mode
+  annotations?: Annotation[];
   breakdown: GradeCriterionResult[];
   totalScore: number;
   maxTotalScore: number;
   feedback: string;
   teacherNotes?: string;
-  originalContent?: string; // To re-display text
-  fullTranscribedText?: string; // Added: OCR Text from image
+  originalContent?: string;
+  fullTranscribedText?: string;
   originalType?: 'text' | 'file';
+  isEditedByTeacher?: boolean;
 }
 
 export interface SubmissionInput {
@@ -55,7 +66,7 @@ export interface SubmissionInput {
   mimeType?: string;
   fileName?: string;
   studentName: string;
-  className?: string; // Added
+  className?: string;
 }
 
 export interface SubmissionRecord {
@@ -64,7 +75,7 @@ export interface SubmissionRecord {
   rubricTitle: string;
   ownerId: string;
   studentName: string;
-  className?: string; // Added
+  className?: string;
   totalScore: number;
   maxTotalScore: number;
   summary: string;
@@ -72,16 +83,9 @@ export interface SubmissionRecord {
   fullResult: GradingResult;
 }
 
-export interface UserProfile {
-  uid: string;
-  email: string | null;
-  displayName: string | null;
-  isGuest: boolean;
-}
-
 export enum AppView {
   DASHBOARD = 'DASHBOARD',
   CREATE_RUBRIC = 'CREATE_RUBRIC',
   GRADING = 'GRADING',
-  STUDENTS = 'STUDENTS', // Added
+  STUDENTS = 'STUDENTS',
 }

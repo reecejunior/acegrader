@@ -24,15 +24,14 @@ export const CreateRubric: React.FC<CreateRubricProps> = ({ onRubricCreated, onC
 
     setIsProcessing(true);
     try {
-      // Pass the entire input object to the service so it can handle files via Multimodal API
       const parsedRubric = await parseRubric(input);
       
-      // Inject subject
+      // Inject subject if not present or override
       parsedRubric.subject = subject;
       
       onRubricCreated(parsedRubric);
     } catch (error) {
-      alert("Failed to parse rubric. If uploading a file, ensure it is clear and legible. Try again.");
+      alert("Failed to parse rubric. Please check the file and try again.");
       console.error(error);
       setIsProcessing(false);
     }
